@@ -12,5 +12,5 @@ resources:
 # The Argo CD Image Updater rewrites `newTag` here on each new build.
 images:
   - name: ghcr.io/guuse/quizmaster
-    newTag: 57614b6f15d445c878d7b26b0844889f9a593b8c
+    newTag: 5914b16346b146410104515641a0f03ff18441bf
     newName: ghcr.io/guuse/quizmaster
