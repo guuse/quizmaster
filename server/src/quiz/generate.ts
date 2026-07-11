@@ -8,6 +8,7 @@
  * surface a clean error. QUIZMASTER_FAKE_QUIZ=1 returns a deterministic quiz so the
  * game loop is fully testable without a live model call — real generation is the default.
  */
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   Difficulty,
@@ -84,7 +85,8 @@ export async function generateQuiz(env: Env, params: GenerateParams): Promise<Qu
   for (let attempt = 0; attempt < 2; attempt++) {
     let generated: GeneratedQuiz;
     try {
-      generated = await callModel(client, env, params);
+      // Fresh seed per attempt → a re-ask draws a genuinely different set.
+      generated = await callModel(client, env, params, randomUUID());
     } catch (err) {
       if (isRateLimit(err)) {
         throw new QuizGenerationError(
@@ -125,13 +127,38 @@ function makeClient(env: Env): Anthropic {
   throw new QuizGenerationError("No Anthropic credentials configured (ANTHROPIC_API_KEY).");
 }
 
-async function callModel(client: Anthropic, env: Env, params: GenerateParams): Promise<GeneratedQuiz> {
+/** Concrete, model-agnostic difficulty rubric so easy/medium/hard actually differ. */
+const DIFFICULTY_RUBRIC: Record<Difficulty, string> = {
+  easy: "EASY: widely-known, general-knowledge facts most people would recognize even without being fans of the topic. Distractors are clearly wrong to anyone with basic awareness.",
+  medium: "MEDIUM: requires genuine familiarity or a fan's knowledge — not headline facts. Distractors are plausible. Deliberately skip the single most obvious fact about the topic.",
+  hard: "HARD: obscure, specific, expert-level details — deep cuts, exact dates/numbers, lesser-known people/events, subtle distinctions. Distractors are very plausible and tricky. A casual fan should usually get these WRONG; only a true expert gets most right.",
+};
+
+async function callModel(
+  client: Anthropic,
+  env: Env,
+  params: GenerateParams,
+  seed: string,
+): Promise<GeneratedQuiz> {
   const prompt =
-    `Create a ${params.difficulty} difficulty quiz on the topic: "${params.topic}".\n` +
-    `Produce exactly ${params.count} questions. Mix multiple_choice (4 options) and ` +
-    `true_false (options must be exactly ["True","False"]) as appropriate. Each question ` +
-    `must have exactly one correct answer, factually accurate. Options within a question ` +
-    `must be distinct and non-empty. Call the submit_quiz tool with the result.`;
+    `You are writing a fun but rigorous ${params.difficulty.toUpperCase()} trivia quiz on: "${params.topic}".\n\n` +
+    `Produce EXACTLY ${params.count} questions — not more, not fewer — as a mix of ` +
+    `multiple_choice (exactly 4 options) and true_false (options exactly ["True","False"]).\n\n` +
+    `DIFFICULTY — calibrate EVERY question strictly to this level, and make the gap between levels obvious:\n` +
+    `${DIFFICULTY_RUBRIC[params.difficulty]}\n\n` +
+    `VARIETY — do NOT produce the "default" quiz:\n` +
+    `- Spread questions across DIFFERENT sub-topics/facets of the topic; don't cluster on one aspect.\n` +
+    `- Skip the single most clichéd question people always ask about this topic.\n` +
+    `- Prefer specific, surprising, or memorable angles over generic ones; vary the wording and question types.\n` +
+    `- Freshness token (changes every time; use it only as a nudge to pick a genuinely different, ` +
+    `non-obvious selection than you would by default): ${seed}\n\n` +
+    `ACCURACY (critical — nobody reviews the answer key, so a wrong answer is undetectable):\n` +
+    `- Only include facts you are HIGHLY confident are correct. If unsure about a name, date, or ` +
+    `detail, choose a different question you can state with certainty rather than guessing.\n` +
+    `- Double-check that the option you mark correct is actually correct, and that the distractors ` +
+    `are actually wrong. Do not invent people, titles, or labels.\n\n` +
+    `RULES: exactly one correct, factually accurate answer per question. Options distinct and non-empty. ` +
+    `For true_false, put the correct value at the matching index. Call the submit_quiz tool with the result.`;
 
   const response = await client.messages.create({
     model: env.quizModel,
@@ -171,10 +198,12 @@ export function validateGeneratedQuiz(
   if (!generated || !Array.isArray(generated.questions)) {
     return { ok: false, error: "missing questions array" };
   }
-  const questions = generated.questions;
-  if (questions.length !== count) {
-    return { ok: false, error: `expected ${count} questions, got ${questions.length}` };
+  const all = generated.questions;
+  if (all.length < count) {
+    return { ok: false, error: `expected ${count} questions, got ${all.length}` };
   }
+  // Over-generation is a common, harmless model off-by-one — just keep the first `count`.
+  const questions = all.slice(0, count);
 
   const normalized: Question[] = [];
   for (let i = 0; i < questions.length; i++) {
@@ -207,19 +236,30 @@ export function validateGeneratedQuiz(
     if (seen.size !== q.options.length) {
       return { ok: false, error: `question ${i} has duplicate options` };
     }
-    if (type === "true_false") {
-      if (q.options[0] !== "True" || q.options[1] !== "False") {
-        return { ok: false, error: `question ${i} true_false options must be ["True","False"]` };
-      }
-    }
     if (!Number.isInteger(q.correctIndex) || q.correctIndex < 0 || q.correctIndex >= q.options.length) {
       return { ok: false, error: `question ${i} correctIndex out of range` };
     }
+
+    let finalOptions = q.options.map((o) => o.trim());
+    let finalCorrectIndex = q.correctIndex;
+
+    if (type === "true_false") {
+      // Models (esp. Haiku) sometimes emit ["true","false"] or a reversed ["False","True"].
+      // Normalize to the canonical ["True","False"], preserving which value was marked correct,
+      // instead of rejecting the whole quiz over a formatting quirk.
+      const lc = finalOptions.map((o) => o.toLowerCase());
+      if (!lc.includes("true") || !lc.includes("false")) {
+        return { ok: false, error: `question ${i} true_false options must be True/False` };
+      }
+      finalCorrectIndex = lc[q.correctIndex] === "true" ? 0 : 1;
+      finalOptions = ["True", "False"];
+    }
+
     normalized.push({
       type,
       text: q.text.trim(),
-      options: q.options.map((o) => o.trim()),
-      correctIndex: q.correctIndex,
+      options: finalOptions,
+      correctIndex: finalCorrectIndex,
     });
   }
 
