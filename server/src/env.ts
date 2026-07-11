@@ -49,6 +49,10 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? null,
     // Accept a Claude Code / OAuth token from either of these names.
     anthropicAuthToken: process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.CLAUDE_SDK_TOKEN ?? null,
+    // Default to the bare "claude-sonnet-5" alias on purpose: it auto-tracks the newest
+    // Sonnet 5 snapshot, so we never bump it for snapshot releases. Do NOT pin a dated
+    // snapshot (e.g. claude-sonnet-5-20xxxxxx). QUIZ_MODEL can override per-deploy (e.g. to
+    // claude-haiku-4-5-20251001 for more rate-limit headroom on a subscription token).
     quizModel: process.env.QUIZ_MODEL ?? "claude-sonnet-5",
 
     googleClientId: process.env.GOOGLE_CLIENT_ID ?? null,
