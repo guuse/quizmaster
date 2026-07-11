@@ -57,6 +57,7 @@ export async function startServer(env: Env): Promise<RunningServer> {
   const engine = new GameEngine(io, prisma, {
     revealMs: env.revealMs,
     leaderboardMs: env.leaderboardMs,
+    countdownMs: env.countdownMs,
   });
   registerSocketHandlers(io, engine, prisma, env);
 

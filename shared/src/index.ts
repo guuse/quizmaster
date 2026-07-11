@@ -77,6 +77,7 @@ export function computeScore(
 
 export type GamePhase =
   | "lobby"
+  | "countdown" // brief 3-2-1 before each question (incl. the first)
   | "question"
   | "reveal"
   | "leaderboard"
@@ -105,11 +106,18 @@ export interface QuestionView {
   questionEndsAt: number;
 }
 
+/** A player shown against the option they chose on the reveal (id seeds their avatar). */
+export interface RevealPlayer {
+  id: string;
+  nickname: string;
+}
 export interface RevealOption {
   index: number;
   text: string;
   count: number; // how many players chose it
   isCorrect: boolean;
+  /** Who chose this option — rendered as avatars so everyone sees what people picked. */
+  players: RevealPlayer[];
 }
 
 /** Reveal payload after a question closes. */
@@ -117,8 +125,14 @@ export interface RevealView {
   questionIndex: number;
   correctIndex: number;
   distribution: RevealOption[];
-  /** Per-recipient — the points THIS player just earned and their new total. */
-  you: { earned: number; total: number; wasCorrect: boolean } | null;
+  /** Per-recipient — the points THIS player just earned, their new total, and their pick. */
+  you: {
+    earned: number;
+    total: number;
+    wasCorrect: boolean;
+    /** The option index this player chose, or null if they didn't answer in time. */
+    chosenIndex: number | null;
+  } | null;
 }
 
 export interface LeaderboardEntry {
@@ -138,6 +152,8 @@ export interface RoomSnapshot {
   question: QuestionView | null; // present in "question" phase
   reveal: RevealView | null; // present in "reveal" phase
   leaderboard: LeaderboardEntry[] | null; // present in "leaderboard" | "final"
+  /** Present in "countdown" phase — a brief 3-2-1 before the upcoming question. */
+  countdown: { endsAt: number; questionNumber: number; total: number } | null;
   /** True once the current player has locked an answer for the active question. */
   youAnswered: boolean;
 }

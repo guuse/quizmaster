@@ -45,6 +45,10 @@ export interface Room {
   questionStartedAt: number; // epoch ms
   questionEndsAt: number; // epoch ms
 
+  /** During the "countdown" phase: when it ends (epoch ms) and which question opens next. */
+  countdownEndsAt: number;
+  countdownNextIndex: number;
+
   finalWritten: boolean;
   /** Epoch ms since the room last had zero connected players (for the reaper). */
   emptySince: number | null;

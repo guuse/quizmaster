@@ -4,6 +4,7 @@ import { RoomProvider, useRoom } from "../context/RoomContext";
 import { Shell } from "../components/Shell";
 import { JoinForm } from "./JoinForm";
 import { Lobby } from "./Lobby";
+import { Countdown } from "./Countdown";
 import { Question } from "./Question";
 import { Reveal } from "./Reveal";
 import { Leaderboard } from "./Leaderboard";
@@ -38,6 +39,8 @@ function RoomView() {
   switch (snapshot.phase) {
     case "lobby":
       return <Lobby />;
+    case "countdown":
+      return <Countdown />;
     case "question":
       return <Question />;
     case "reveal":

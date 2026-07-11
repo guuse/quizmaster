@@ -33,12 +33,14 @@ import type { AnswerRecord, PlayerState, Room } from "./state.js";
 
 export const REVEAL_MS = 5000;
 export const LEADERBOARD_MS = 5000;
+export const COUNTDOWN_MS = 3000; // "3-2-1" before every question
 const REAP_AFTER_MS = 2 * 60 * 1000; // 2 minutes with no connected players
 const REAP_INTERVAL_MS = 30 * 1000;
 
 export interface EngineOptions {
   revealMs?: number;
   leaderboardMs?: number;
+  countdownMs?: number;
 }
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -51,6 +53,7 @@ export class GameEngine {
   private reaper: NodeJS.Timeout;
   private revealMs: number;
   private leaderboardMs: number;
+  private countdownMs: number;
 
   constructor(
     private io: IO,
@@ -59,6 +62,7 @@ export class GameEngine {
   ) {
     this.revealMs = options.revealMs ?? REVEAL_MS;
     this.leaderboardMs = options.leaderboardMs ?? LEADERBOARD_MS;
+    this.countdownMs = options.countdownMs ?? COUNTDOWN_MS;
     this.reaper = setInterval(() => this.reapRooms(), REAP_INTERVAL_MS);
     // Don't keep the process alive just for the reaper.
     this.reaper.unref?.();
@@ -97,6 +101,8 @@ export class GameEngine {
       currentQuestionIndex: -1,
       questionStartedAt: 0,
       questionEndsAt: 0,
+      countdownEndsAt: 0,
+      countdownNextIndex: -1,
       finalWritten: false,
       emptySince: Date.now(),
       timer: null,
@@ -137,6 +143,8 @@ export class GameEngine {
     room.currentQuestionIndex = -1;
     room.questionStartedAt = 0;
     room.questionEndsAt = 0;
+    room.countdownEndsAt = 0;
+    room.countdownNextIndex = -1;
     room.finalWritten = false;
     for (const p of room.players.values()) {
       p.score = 0;
@@ -251,7 +259,7 @@ export class GameEngine {
       return;
     }
     ack({ ok: true });
-    this.openQuestion(room, 0);
+    this.startCountdown(room, 0);
   }
 
   /** Submit an answer for the active question. Late/duplicate answers are ignored. */
@@ -344,6 +352,16 @@ export class GameEngine {
 
   // ── Phase loop ────────────────────────────────────────────────────────────────
 
+  /** Brief "3-2-1" before a question opens (server-timed, synchronized for everyone). */
+  private startCountdown(room: Room, nextIndex: number): void {
+    this.clearTimer(room);
+    room.phase = "countdown";
+    room.countdownNextIndex = nextIndex;
+    room.countdownEndsAt = Date.now() + this.countdownMs;
+    this.pushSnapshots(room);
+    room.timer = setTimeout(() => this.openQuestion(room, nextIndex), this.countdownMs);
+  }
+
   private openQuestion(room: Room, index: number): void {
     room.phase = "question";
     room.currentQuestionIndex = index;
@@ -396,7 +414,7 @@ export class GameEngine {
       if (isLast) {
         void this.finish(room);
       } else {
-        this.openQuestion(room, room.currentQuestionIndex + 1);
+        this.startCountdown(room, room.currentQuestionIndex + 1);
       }
     }, this.leaderboardMs);
   }
@@ -445,16 +463,19 @@ export class GameEngine {
   }
 
   private buildDistribution(room: Room, question: Question): RevealOption[] {
-    const counts = new Array(question.options.length).fill(0);
+    const chosen: { id: string; nickname: string }[][] = question.options.map(() => []);
     for (const player of room.players.values()) {
       const ans = player.answers.get(room.currentQuestionIndex);
-      if (ans) counts[ans.optionIndex] += 1;
+      if (ans && ans.optionIndex >= 0 && ans.optionIndex < chosen.length) {
+        chosen[ans.optionIndex].push({ id: player.id, nickname: player.nickname });
+      }
     }
     return question.options.map((text, index) => ({
       index,
       text,
-      count: counts[index],
+      count: chosen[index].length,
       isCorrect: index === question.correctIndex,
+      players: chosen[index],
     }));
   }
 
@@ -470,8 +491,8 @@ export class GameEngine {
       correctIndex: question.correctIndex,
       distribution,
       you: ans
-        ? { earned: ans.earned, total: player.score, wasCorrect: ans.correct }
-        : { earned: 0, total: player.score, wasCorrect: false },
+        ? { earned: ans.earned, total: player.score, wasCorrect: ans.correct, chosenIndex: ans.optionIndex }
+        : { earned: 0, total: player.score, wasCorrect: false, chosenIndex: null },
     };
   }
 
@@ -518,6 +539,15 @@ export class GameEngine {
     const leaderboard =
       phase === "leaderboard" || phase === "final" ? this.buildLeaderboard(room) : null;
 
+    const countdown =
+      phase === "countdown"
+        ? {
+            endsAt: room.countdownEndsAt,
+            questionNumber: room.countdownNextIndex + 1,
+            total: room.questions.length,
+          }
+        : null;
+
     const youAnswered =
       phase === "question" ? player.answers.has(room.currentQuestionIndex) : false;
 
@@ -530,6 +560,7 @@ export class GameEngine {
       question,
       reveal,
       leaderboard,
+      countdown,
       youAnswered,
     };
   }
