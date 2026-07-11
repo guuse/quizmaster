@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: quizmaster
+  labels:
+    app: quizmaster
+spec:
+  selector:
+    app: quizmaster
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

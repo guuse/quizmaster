@@ -1,0 +1,98 @@
+# Single stateful replica. SQLite file + in-memory game state cannot be shared, so
+# replicas:1 with a Recreate strategy (never two pods writing the same DB / holding
+# divergent room state). Migrations run in the image's CMD on start.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quizmaster
+  labels:
+    app: quizmaster
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: quizmaster
+  template:
+    metadata:
+      labels:
+        app: quizmaster
+    spec:
+      # Kubelet pull secret for the (private) GHCR package — same convention as huisjes.
+      # Create out-of-band, or make the ghcr.io/guuse/quizmaster package public and drop this.
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: quizmaster
+          image: ghcr.io/guuse/quizmaster
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            # SQLite on the mounted PVC.
+            - name: DATABASE_URL
+              value: file:/data/quizmaster.db
+            # Secrets applied out-of-band (never committed) — see secret.example.yaml.
+            # Claude credential. The server accepts EITHER an API key (ANTHROPIC_API_KEY) or an
+            # OAuth token (CLAUDE_SDK_TOKEN, sk-ant-oat01-…). Both are optional here so you can
+            # supply whichever you hold; at least one must be present for quiz generation to work.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: CLAUDE_SDK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: CLAUDE_SDK_TOKEN
+                  optional: true
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: SESSION_SECRET
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: OAUTH_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: OAUTH_REDIRECT_URI
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: quizmaster-data

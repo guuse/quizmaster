@@ -1,0 +1,28 @@
+# Tailnet-internal host for the creator. TLS is terminated with the cluster's wildcard
+# certificate via Traefik's default TLSStore — no per-app Certificate/secret. The
+# public friend-facing URL is a Tailscale Funnel *.ts.net hostname (see CONTEXT.md),
+# provisioned separately by the Tailscale operator.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quizmaster
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: quizmaster.guuse.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: quizmaster
+                port:
+                  name: http
+  # No secretName: Traefik serves the wildcard cert from its default TLSStore.
+  tls:
+    - hosts:
+        - quizmaster.guuse.online

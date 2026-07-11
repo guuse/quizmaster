@@ -1,0 +1,12 @@
+# SQLite lives on a local-path PVC. Single writer only — hence replicas:1 + Recreate.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: quizmaster-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

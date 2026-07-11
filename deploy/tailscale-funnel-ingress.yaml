@@ -1,0 +1,31 @@
+# Public friend-facing entrypoint via Tailscale Funnel, provisioned by the Tailscale
+# Kubernetes operator (installed from the homeserver repo:
+# argocd/applications/tailscale-operator.yaml).
+#
+# The operator watches Ingresses with ingressClassName: tailscale. With the funnel
+# annotation it publishes the backend Service to the public internet over HTTPS at
+#   https://quizmaster.<your-tailnet>.ts.net
+# terminating TLS with a Tailscale-issued cert — no port is opened on the box, and the
+# rest of the cluster stays tailnet-only. WebSockets (Socket.IO) pass through the proxy.
+#
+# NOTE: Funnel cannot serve the custom guuse.online domain — that stays tailnet-internal
+# via the Traefik Ingress (ingress.yaml). The .ts.net URL below is the shareable link.
+# Register this origin's /api/auth/google/callback as the Google OAuth redirect URI.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quizmaster-funnel
+  annotations:
+    tailscale.com/funnel: "true"
+    tailscale.com/hostname: "quizmaster"
+spec:
+  ingressClassName: tailscale
+  defaultBackend:
+    service:
+      name: quizmaster
+      port:
+        name: http
+  tls:
+    - hosts:
+        # The operator maps this to quizmaster.<tailnet>.ts.net.
+        - quizmaster

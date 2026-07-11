@@ -1,0 +1,119 @@
+/* Self-hosted fonts (no external network / CDN dependency). */
+@import "@fontsource/righteous/400.css";
+@import "@fontsource/poppins/300.css";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Design tokens (mirror DESIGN.md). Light is the default; dark via prefers-color
+   scheme and the explicit [data-theme] override (toggle stamps data-theme on :root).
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Brand */
+  --color-primary: #2563eb; /* quiz blue */
+  --color-on-primary: #ffffff;
+  --color-secondary: #7c3aed; /* purple */
+  --color-accent: #f59e0b; /* gold — leaderboard / CTA highlight */
+  --color-background: #eef3fc;
+  --color-panel: #ffffff;
+  --color-foreground: #0f172a;
+  --color-sub: #5a6b8c;
+  --color-muted: #f1f5fd;
+  --color-border: #dbe5f7;
+  --color-destructive: #dc2626;
+  --color-ring: #2563eb;
+
+  /* Answer tiles — color + SHAPE (a11y: color is never the only signal) */
+  --answer-a: #e21b3c; /* red    — triangle */
+  --answer-b: #1368ce; /* blue   — diamond  */
+  --answer-c: #d89e00; /* gold   — circle   */
+  --answer-d: #26890c; /* green  — square   */
+
+  --radius: 16px;
+  --shadow-block: 0 6px 0 rgba(15, 23, 42, 0.18);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #0a1020;
+    --color-panel: #111a30;
+    --color-foreground: #eef3ff;
+    --color-sub: #93a3c9;
+    --color-muted: #16223f;
+    --color-border: #20304f;
+    color-scheme: dark;
+  }
+}
+
+/* Explicit overrides always win over the media query. */
+:root[data-theme="dark"] {
+  --color-background: #0a1020;
+  --color-panel: #111a30;
+  --color-foreground: #eef3ff;
+  --color-sub: #93a3c9;
+  --color-muted: #16223f;
+  --color-border: #20304f;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --color-background: #eef3fc;
+  --color-panel: #ffffff;
+  --color-foreground: #0f172a;
+  --color-sub: #5a6b8c;
+  --color-muted: #f1f5fd;
+  --color-border: #dbe5f7;
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  /* Numbers that tick (timers, scores, counts) use tabular figures to avoid layout shift. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Visible focus ring everywhere — accessibility floor. */
+  :focus-visible {
+    outline: 3px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Righteous", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Reduced motion collapses every animation/transition to an instant state change. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
