@@ -54,6 +54,14 @@ spec:
                   name: quizmaster-secrets
                   key: CLAUDE_SDK_TOKEN
                   optional: true
+            # Optional model override (defaults to claude-sonnet-5). Set to
+            # claude-haiku-4-5-20251001 for more rate-limit headroom on a subscription token.
+            - name: QUIZ_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: quizmaster-secrets
+                  key: QUIZ_MODEL
+                  optional: true
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:

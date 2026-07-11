@@ -24,10 +24,29 @@ export interface GenerateParams {
 }
 
 export class QuizGenerationError extends Error {
-  constructor(message: string) {
+  /** True when generation failed because the Claude credential is rate-limited (HTTP 429/529). */
+  readonly rateLimited: boolean;
+  constructor(message: string, rateLimited = false) {
     super(message);
     this.name = "QuizGenerationError";
+    this.rateLimited = rateLimited;
   }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Pull a retry-after delay (ms) from an Anthropic API error's headers, if present. */
+function retryAfterMs(err: unknown): number | null {
+  const headers = (err as { headers?: Record<string, string> })?.headers;
+  const raw = headers?.["retry-after"] ?? headers?.["Retry-After"];
+  if (!raw) return null;
+  const secs = Number(raw);
+  return Number.isFinite(secs) ? Math.min(30_000, secs * 1000) : null;
+}
+
+function isRateLimit(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  return status === 429 || status === 529; // 429 rate_limit, 529 overloaded
 }
 
 const SUBMIT_QUIZ_TOOL = {
@@ -67,14 +86,26 @@ export async function generateQuiz(env: Env, params: GenerateParams): Promise<Qu
 
   const client = makeClient(env);
   let lastError = "unknown error";
+  let sawRateLimit = false;
 
-  // Force the tool call, validate, retry ONCE on failure.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Force the tool call + validate. Retry on failure; on rate-limit/overloaded, back off
+  // (honoring retry-after) so a windowed subscription limit has time to recover. Subscription
+  // OAuth tokens (sk-ant-oat01-…) share a rolling budget, so this smooths transient 429s.
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let generated: GeneratedQuiz | null = null;
     try {
       generated = await callModel(client, env, params);
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+      if (isRateLimit(err)) {
+        sawRateLimit = true;
+        if (attempt < MAX_ATTEMPTS - 1) {
+          // Prefer the server's retry-after; otherwise exponential (≈2s, 4s, 9s, 20s).
+          const backoff = retryAfterMs(err) ?? Math.min(20_000, 2000 * Math.pow(2.1, attempt));
+          await sleep(backoff);
+        }
+      }
       continue;
     }
     const result = validateGeneratedQuiz(generated, params.count);
@@ -84,18 +115,27 @@ export async function generateQuiz(env: Env, params: GenerateParams): Promise<Qu
     lastError = result.error;
   }
 
+  if (sawRateLimit) {
+    throw new QuizGenerationError(
+      "Claude is rate-limited right now — wait a moment and try again.",
+      true,
+    );
+  }
   throw new QuizGenerationError(`Quiz generation failed after retry: ${lastError}`);
 }
 
 function makeClient(env: Env): Anthropic {
+  // maxRetries lets the SDK itself back off + honor retry-after on 429/529 before our
+  // loop even sees an error — important for the shared-budget OAuth token path.
   if (env.anthropicApiKey) {
-    return new Anthropic({ apiKey: env.anthropicApiKey });
+    return new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 4 });
   }
   if (env.anthropicAuthToken) {
     // OAuth-style token (sk-ant-oat01-...): sent as Authorization: Bearer with the
     // oauth beta header, rather than as an x-api-key.
     return new Anthropic({
       authToken: env.anthropicAuthToken,
+      maxRetries: 4,
       defaultHeaders: { "anthropic-beta": "oauth-2025-04-20" },
     });
   }
