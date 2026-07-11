@@ -1,0 +1,63 @@
+// Quizmaster — SQLite via Prisma. Durable: users, sessions, quizzes, game_results.
+// Live game state is NEVER stored here (it lives in memory on the single server process).
+// See CONTEXT.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // e.g. file:/data/quizmaster.db (PVC-mounted in k8s)
+}
+
+model User {
+  id        String   @id @default(cuid())
+  googleId  String   @unique
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  quizzes  Quiz[]
+  sessions Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Quiz {
+  id           String   @id @default(cuid())
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic        String
+  difficulty   String // "easy" | "medium" | "hard"
+  timerSeconds Int // 10 | 20 | 30
+  // Questions (incl. correctIndex) stored as a JSON string — sealed, never exposed to players.
+  questionsJson String
+  createdAt    DateTime @default(now())
+
+  results GameResult[]
+
+  @@index([ownerId])
+}
+
+model GameResult {
+  id          String   @id @default(cuid())
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  roomCode    String
+  playerCount Int
+  // Final standings snapshot as JSON: [{ nickname, score, rank }, ...]
+  standingsJson String
+  playedAt    DateTime @default(now())
+
+  @@index([quizId])
+}

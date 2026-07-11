@@ -1,0 +1,21 @@
+{
+  "name": "quizmaster",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
+    "dev": "npm run dev -w server",
+    "start": "node server/dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,18 @@
+.env
+node_modules/
+dist/
+*.db
+*.db-journal
+prisma/*.db
+/data/
+.DS_Store
+scratch/
+
+# Test artifacts (keep the E2E specs + reports, drop generated output)
+test-results/
+playwright-report/
+ux-test-run/results/screenshots/
+ux-test-run/results/*.log
+ux-test-run/results/report.json
+ux-test-run/diag.mjs
+dev.db
