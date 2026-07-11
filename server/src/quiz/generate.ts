@@ -33,17 +33,6 @@ export class QuizGenerationError extends Error {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** Pull a retry-after delay (ms) from an Anthropic API error's headers, if present. */
-function retryAfterMs(err: unknown): number | null {
-  const headers = (err as { headers?: Record<string, string> })?.headers;
-  const raw = headers?.["retry-after"] ?? headers?.["Retry-After"];
-  if (!raw) return null;
-  const secs = Number(raw);
-  return Number.isFinite(secs) ? Math.min(30_000, secs * 1000) : null;
-}
-
 function isRateLimit(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
   return status === 429 || status === 529; // 429 rate_limit, 529 overloaded
@@ -85,57 +74,51 @@ export async function generateQuiz(env: Env, params: GenerateParams): Promise<Qu
   }
 
   const client = makeClient(env);
-  let lastError = "unknown error";
-  let sawRateLimit = false;
 
-  // Force the tool call + validate. Retry on failure; on rate-limit/overloaded, back off
-  // (honoring retry-after) so a windowed subscription limit has time to recover. Subscription
-  // OAuth tokens (sk-ant-oat01-…) share a rolling budget, so this smooths transient 429s.
-  const MAX_ATTEMPTS = 5;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    let generated: GeneratedQuiz | null = null;
+  // ONE request for the whole quiz. We deliberately do NOT retry on rate-limit: retrying into
+  // a per-minute rate limit just multiplies the burst (that's what tripped 429s under load).
+  // Fail fast with a friendly message instead and let the user re-try when the window clears.
+  // The only retry is a single re-ask when the model returns a *malformed* quiz — that's a
+  // content problem, unrelated to rate limits, so it never contributes to a rate-limit burst.
+  let lastError = "unknown error";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let generated: GeneratedQuiz;
     try {
       generated = await callModel(client, env, params);
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
       if (isRateLimit(err)) {
-        sawRateLimit = true;
-        if (attempt < MAX_ATTEMPTS - 1) {
-          // Prefer the server's retry-after; otherwise exponential (≈2s, 4s, 9s, 20s).
-          const backoff = retryAfterMs(err) ?? Math.min(20_000, 2000 * Math.pow(2.1, attempt));
-          await sleep(backoff);
-        }
+        throw new QuizGenerationError(
+          "Claude is rate-limited right now — wait a moment and try again.",
+          true,
+        );
       }
+      // Non-rate-limit transient (e.g. a network blip) — one clean re-try, no storm.
+      lastError = err instanceof Error ? err.message : String(err);
       continue;
     }
     const result = validateGeneratedQuiz(generated, params.count);
     if (result.ok) {
       return result.questions;
     }
-    lastError = result.error;
+    lastError = result.error; // malformed output → re-ask once
   }
 
-  if (sawRateLimit) {
-    throw new QuizGenerationError(
-      "Claude is rate-limited right now — wait a moment and try again.",
-      true,
-    );
-  }
-  throw new QuizGenerationError(`Quiz generation failed after retry: ${lastError}`);
+  throw new QuizGenerationError(`Quiz generation failed: ${lastError}`);
 }
 
 function makeClient(env: Env): Anthropic {
-  // maxRetries lets the SDK itself back off + honor retry-after on 429/529 before our
-  // loop even sees an error — important for the shared-budget OAuth token path.
+  // maxRetries: 0 — the SDK's built-in retry would fire multiple requests per generation on a
+  // 429/5xx. We want exactly one HTTP request per quiz (the whole quiz is one request), so we
+  // disable SDK retries and handle rate-limits ourselves by failing fast (see generateQuiz).
   if (env.anthropicApiKey) {
-    return new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 4 });
+    return new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 0 });
   }
   if (env.anthropicAuthToken) {
     // OAuth-style token (sk-ant-oat01-...): sent as Authorization: Bearer with the
     // oauth beta header, rather than as an x-api-key.
     return new Anthropic({
       authToken: env.anthropicAuthToken,
-      maxRetries: 4,
+      maxRetries: 0,
       defaultHeaders: { "anthropic-beta": "oauth-2025-04-20" },
     });
   }
