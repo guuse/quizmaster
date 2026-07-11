@@ -46,7 +46,12 @@ export function createQuizRouter(prisma: PrismaClient, env: Env, engine: GameEng
       questions = await generateQuiz(env, { topic, count, difficulty });
     } catch (err) {
       if (err instanceof QuizGenerationError) {
-        res.status(502).json({ error: "generation_failed", message: err.message });
+        // Rate-limit → 429 so the client can show a friendly "busy, try again" and keep the form.
+        const status = err.rateLimited ? 429 : 502;
+        res.status(status).json({
+          error: err.rateLimited ? "rate_limited" : "generation_failed",
+          message: err.message,
+        });
         return;
       }
       res.status(502).json({ error: "generation_failed", message: "Quiz generation failed." });
