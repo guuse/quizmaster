@@ -561,6 +561,7 @@ export class GameEngine {
       reveal,
       leaderboard,
       countdown,
+      serverNow: Date.now(),
       youAnswered,
     };
   }

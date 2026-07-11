@@ -9,11 +9,12 @@ import { useCountdown } from "../lib/useCountdown";
 import { cn } from "../lib/util";
 
 export function Question() {
-  const { snapshot, localAnswer, submitAnswer } = useRoom();
+  const { snapshot, localAnswer, submitAnswer, clockOffsetMs } = useRoom();
   const q = snapshot?.question ?? null;
   const { secondsLeft, fraction, expired } = useCountdown(
     q?.questionStartedAt ?? null,
     q?.questionEndsAt ?? null,
+    clockOffsetMs,
   );
 
   const isTrueFalse = q?.type === "true_false";
