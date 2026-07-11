@@ -61,6 +61,8 @@ export async function startServer(env: Env): Promise<RunningServer> {
   registerSocketHandlers(io, engine, prisma, env);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  // Public runtime config (no auth). The client uses publicBaseUrl to build invite links.
+  app.get("/api/config", (_req, res) => res.json({ publicBaseUrl: env.publicBaseUrl }));
   app.use("/api", createAuthRouter(prisma, env));
   app.use("/api", createQuizRouter(prisma, env, engine));
 

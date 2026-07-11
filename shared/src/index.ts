@@ -236,6 +236,15 @@ export interface MeResponse {
   user: { id: string; name: string; email: string; avatarUrl?: string } | null;
 }
 
+/**
+ * GET /api/config — public, unauthenticated. Runtime config the client needs before/without
+ * a session. `publicBaseUrl` is the origin the client should build shareable invite links from
+ * (e.g. a pretty custom domain), falling back to the current window origin when null.
+ */
+export interface ConfigResponse {
+  publicBaseUrl: string | null;
+}
+
 /** A past game's result summary (GET /api/quizzes/:id/results). */
 export interface GameResultSummary {
   gameId: string;

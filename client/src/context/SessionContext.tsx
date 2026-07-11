@@ -7,13 +7,15 @@ import {
   type ReactNode,
 } from "react";
 import type { MeResponse } from "@quizmaster/shared";
-import { getMe, logout as apiLogout } from "../lib/api";
+import { getConfig, getMe, logout as apiLogout } from "../lib/api";
 
 type User = NonNullable<MeResponse["user"]>;
 
 interface SessionValue {
   user: User | null;
   loading: boolean;
+  /** Origin for shareable invite links (a pretty custom domain), or null → use window origin. */
+  publicBaseUrl: string | null;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -29,6 +31,7 @@ export function useSession(): SessionValue {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [publicBaseUrl, setPublicBaseUrl] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,10 +55,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    // Public config is static per deploy; fetch once, ignore failures (falls back to origin).
+    getConfig()
+      .then((c) => setPublicBaseUrl(c.publicBaseUrl))
+      .catch(() => setPublicBaseUrl(null));
   }, [refresh]);
 
   return (
-    <SessionCtx.Provider value={{ user, loading, refresh, logout }}>
+    <SessionCtx.Provider value={{ user, loading, publicBaseUrl, refresh, logout }}>
       {children}
     </SessionCtx.Provider>
   );

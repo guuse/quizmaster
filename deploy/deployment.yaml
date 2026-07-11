@@ -35,6 +35,10 @@ spec:
               value: production
             - name: PORT
               value: "3000"
+            # Pretty public origin the client builds shareable invite links from. This is the
+            # Cloudflare redirect host that 302s to the Tailscale Funnel URL.
+            - name: PUBLIC_BASE_URL
+              value: https://quiz.guuse.online
             # SQLite on the mounted PVC.
             - name: DATABASE_URL
               value: file:/data/quizmaster.db

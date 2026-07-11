@@ -4,15 +4,19 @@ import { Shell } from "../components/Shell";
 import { Avatar } from "../components/Avatar";
 import { LiveRegion } from "../components/LiveRegion";
 import { useRoom } from "../context/RoomContext";
+import { useSession } from "../context/SessionContext";
+import { inviteBaseUrl } from "../lib/api";
 import { cn } from "../lib/util";
 
 export function Lobby() {
   const { roomCode, snapshot, players, start, error } = useRoom();
+  const { publicBaseUrl } = useSession();
   const [copied, setCopied] = useState(false);
 
   const you = snapshot?.you;
   const isCreator = !!you?.isCreator;
-  const joinUrl = `${window.location.origin}/join/${roomCode}`;
+  // Prefer the configured pretty domain (e.g. quiz.guuse.online) over the current origin.
+  const joinUrl = `${inviteBaseUrl(publicBaseUrl)}/join/${roomCode}`;
 
   async function copyLink() {
     try {

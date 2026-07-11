@@ -4,6 +4,7 @@
  * `credentials: "include"`.
  */
 import type {
+  ConfigResponse,
   CreateQuizRequest,
   CreateQuizResponse,
   MeResponse,
@@ -46,6 +47,18 @@ function safeJson(text: string): any {
 
 export function getMe(): Promise<MeResponse> {
   return request<MeResponse>("/api/me");
+}
+
+export function getConfig(): Promise<ConfigResponse> {
+  return request<ConfigResponse>("/api/config");
+}
+
+/**
+ * The origin to build shareable invite links from. Prefers the server's configured
+ * publicBaseUrl (a pretty custom domain), falling back to the current window origin.
+ */
+export function inviteBaseUrl(publicBaseUrl: string | null): string {
+  return publicBaseUrl ?? window.location.origin;
 }
 
 /** Dev-only login (server must run with QUIZMASTER_DEV_AUTH=1). */
