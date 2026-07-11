@@ -154,6 +154,12 @@ export interface RoomSnapshot {
   leaderboard: LeaderboardEntry[] | null; // present in "leaderboard" | "final"
   /** Present in "countdown" phase — a brief 3-2-1 before the upcoming question. */
   countdown: { endsAt: number; questionNumber: number; total: number } | null;
+  /**
+   * Server wall-clock (epoch ms) at the moment this snapshot was built. The client derives a
+   * clock offset (serverNow − clientNow) from it so countdowns use SERVER time — otherwise a
+   * player whose PC clock is fast sees every question already expired (timer 0, tiles locked).
+   */
+  serverNow: number;
   /** True once the current player has locked an answer for the active question. */
   youAnswered: boolean;
 }

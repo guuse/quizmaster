@@ -50,6 +50,8 @@ interface RoomContextValue {
   connected: boolean;
   snapshot: RoomSnapshot | null;
   players: PlayerView[];
+  /** serverNow − clientNow. Add to Date.now() to get server time for countdowns. */
+  clockOffsetMs: number;
   /** The option THIS client locked for the active question (optimistic, local). */
   localAnswer: LocalAnswer | null;
   join: (nickname: string) => void;
@@ -81,6 +83,14 @@ export function RoomProvider({
   const [connected, setConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [localAnswer, setLocalAnswer] = useState<LocalAnswer | null>(null);
+  // serverNow − clientNow, so countdowns run on SERVER time even if this PC's clock is off.
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
+
+  // Every full snapshot carries the server's wall clock; re-derive the offset from it.
+  const applySnapshot = useCallback((snap: RoomSnapshot) => {
+    setClockOffsetMs(snap.serverNow - Date.now());
+    setSnapshot(snap);
+  }, []);
 
   // Refs the (stable) socket event handlers read so they always see the latest values.
   const tokenRef = useRef<string | null>(null);
@@ -97,7 +107,7 @@ export function RoomProvider({
           nickname: nicknameRef.current,
         });
         joinedRef.current = true;
-        setSnapshot(res.snapshot);
+        applySnapshot(res.snapshot);
         setStatus("joined");
         setError(null);
       } else {
@@ -161,7 +171,7 @@ export function RoomProvider({
     socket.on("disconnect", () => setConnected(false));
 
     socket.on("room:snapshot", (snap) => {
-      setSnapshot(snap);
+      applySnapshot(snap);
       joinedRef.current = true;
       setStatus("joined");
     });
@@ -252,6 +262,7 @@ export function RoomProvider({
       connected,
       snapshot,
       players: snapshot?.players ?? [],
+      clockOffsetMs,
       localAnswer,
       join,
       start,
@@ -265,6 +276,7 @@ export function RoomProvider({
       error,
       connected,
       snapshot,
+      clockOffsetMs,
       localAnswer,
       join,
       start,

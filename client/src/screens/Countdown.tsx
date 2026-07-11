@@ -9,7 +9,7 @@ import { useRoom } from "../context/RoomContext";
  * for everyone). Shown before the first question and between questions.
  */
 export function Countdown() {
-  const { snapshot } = useRoom();
+  const { snapshot, clockOffsetMs } = useRoom();
   const cd = snapshot?.countdown;
   const [now, setNow] = useState(() => Date.now());
 
@@ -19,7 +19,8 @@ export function Countdown() {
   }, []);
 
   if (!cd) return null;
-  const secs = Math.max(0, Math.ceil((cd.endsAt - now) / 1000));
+  // Use SERVER time (client clock + offset) so a skewed PC clock doesn't skip the countdown.
+  const secs = Math.max(0, Math.ceil((cd.endsAt - (now + clockOffsetMs)) / 1000));
   const label = secs > 0 ? String(secs) : "Go!";
 
   return (
