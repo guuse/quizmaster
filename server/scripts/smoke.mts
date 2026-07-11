@@ -59,6 +59,7 @@ async function main(): Promise<void> {
     fakeQuiz: true, // deterministic loop; real generation is the production default
     revealMs: 200,
     leaderboardMs: 200,
+    countdownMs: 50,
     sessionSecret: "smoke-test-secret",
   });
 

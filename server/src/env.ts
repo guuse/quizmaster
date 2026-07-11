@@ -37,6 +37,7 @@ export interface Env {
   // Phase durations (ms). Overridable so tests can run the loop fast.
   revealMs: number;
   leaderboardMs: number;
+  countdownMs: number;
 
   isProduction: boolean;
 }
@@ -70,6 +71,7 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
 
     revealMs: Number(process.env.QUIZMASTER_REVEAL_MS ?? 5000),
     leaderboardMs: Number(process.env.QUIZMASTER_LEADERBOARD_MS ?? 5000),
+    countdownMs: Number(process.env.QUIZMASTER_COUNTDOWN_MS ?? 3000),
 
     isProduction: process.env.NODE_ENV === "production",
     ...overrides,
