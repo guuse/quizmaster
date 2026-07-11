@@ -13,6 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   Difficulty,
   GeneratedQuiz,
+  Language,
   Question,
   QuestionType,
 } from "@quizmaster/shared";
@@ -22,6 +23,7 @@ export interface GenerateParams {
   topic: string;
   count: number;
   difficulty: Difficulty;
+  language: Language;
 }
 
 export class QuizGenerationError extends Error {
@@ -98,7 +100,7 @@ export async function generateQuiz(env: Env, params: GenerateParams): Promise<Qu
       lastError = err instanceof Error ? err.message : String(err);
       continue;
     }
-    const result = validateGeneratedQuiz(generated, params.count);
+    const result = validateGeneratedQuiz(generated, params.count, params.language);
     if (result.ok) {
       return result.questions;
     }
@@ -140,10 +142,17 @@ async function callModel(
   params: GenerateParams,
   seed: string,
 ): Promise<GeneratedQuiz> {
+  const lang =
+    params.language === "nl"
+      ? `LANGUAGE: Write EVERYTHING — every question and every option — in natural, fluent Dutch (Nederlands). ` +
+        `For true_false questions the two options must be exactly ["Waar", "Onwaar"] (Dutch for True/False).\n\n`
+      : `LANGUAGE: Write everything in English. For true_false questions the two options must be exactly ["True", "False"].\n\n`;
+
   const prompt =
     `You are writing a fun but rigorous ${params.difficulty.toUpperCase()} trivia quiz on: "${params.topic}".\n\n` +
+    lang +
     `Produce EXACTLY ${params.count} questions — not more, not fewer — as a mix of ` +
-    `multiple_choice (exactly 4 options) and true_false (options exactly ["True","False"]).\n\n` +
+    `multiple_choice (exactly 4 options) and true_false (2 options) as described above.\n\n` +
     `DIFFICULTY — calibrate EVERY question strictly to this level, and make the gap between levels obvious:\n` +
     `${DIFFICULTY_RUBRIC[params.difficulty]}\n\n` +
     `VARIETY — do NOT produce the "default" quiz:\n` +
@@ -191,9 +200,18 @@ interface ValidationFail {
  * the right option counts per type, an in-range correctIndex, and no empty/duplicate
  * options. Returns a normalized Question[] on success.
  */
+// Recognized true/false words per language (lowercased). Lets us accept the model's casing/order
+// and normalize to the canonical display pair for the quiz language.
+const TRUE_WORDS = new Set(["true", "waar", "juist", "correct"]);
+const FALSE_WORDS = new Set(["false", "onwaar", "niet waar", "fout", "onjuist", "vals"]);
+function tfDisplay(language: Language): [string, string] {
+  return language === "nl" ? ["Waar", "Onwaar"] : ["True", "False"];
+}
+
 export function validateGeneratedQuiz(
   generated: GeneratedQuiz | null | undefined,
   count: number,
+  language: Language = "en",
 ): ValidationOk | ValidationFail {
   if (!generated || !Array.isArray(generated.questions)) {
     return { ok: false, error: "missing questions array" };
@@ -244,15 +262,17 @@ export function validateGeneratedQuiz(
     let finalCorrectIndex = q.correctIndex;
 
     if (type === "true_false") {
-      // Models (esp. Haiku) sometimes emit ["true","false"] or a reversed ["False","True"].
-      // Normalize to the canonical ["True","False"], preserving which value was marked correct,
-      // instead of rejecting the whole quiz over a formatting quirk.
+      // Models sometimes emit ["true","false"], a reversed pair, or (for Dutch) ["Waar","Onwaar"].
+      // Normalize to the canonical display pair for the language, preserving which value was
+      // marked correct, instead of rejecting the whole quiz over a formatting/casing quirk.
       const lc = finalOptions.map((o) => o.toLowerCase());
-      if (!lc.includes("true") || !lc.includes("false")) {
-        return { ok: false, error: `question ${i} true_false options must be True/False` };
+      const trueIdx = lc.findIndex((o) => TRUE_WORDS.has(o));
+      const falseIdx = lc.findIndex((o) => FALSE_WORDS.has(o));
+      if (trueIdx < 0 || falseIdx < 0 || trueIdx === falseIdx) {
+        return { ok: false, error: `question ${i} true_false options must be a true/false pair` };
       }
-      finalCorrectIndex = lc[q.correctIndex] === "true" ? 0 : 1;
-      finalOptions = ["True", "False"];
+      finalCorrectIndex = q.correctIndex === trueIdx ? 0 : 1;
+      finalOptions = tfDisplay(language);
     }
 
     normalized.push({
