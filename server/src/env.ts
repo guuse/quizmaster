@@ -27,6 +27,9 @@ export interface Env {
   googleClientSecret: string | null;
   oauthRedirectUri: string | null;
 
+  /** Origin the client builds shareable invite links from (null → use window origin). */
+  publicBaseUrl: string | null;
+
   // Test / local switches.
   devAuth: boolean; // QUIZMASTER_DEV_AUTH=1 enables POST /api/auth/dev-login
   fakeQuiz: boolean; // QUIZMASTER_FAKE_QUIZ=1 returns a deterministic quiz (no Claude call)
@@ -58,6 +61,9 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
     googleClientId: process.env.GOOGLE_CLIENT_ID ?? null,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? null,
     oauthRedirectUri: process.env.OAUTH_REDIRECT_URI ?? null,
+    // Origin the client builds shareable invite links from (e.g. https://quiz.guuse.online).
+    // Unset in dev → client falls back to window.location.origin. Trailing slash is trimmed.
+    publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, "") || null,
 
     devAuth: process.env.QUIZMASTER_DEV_AUTH === "1",
     fakeQuiz: process.env.QUIZMASTER_FAKE_QUIZ === "1",
