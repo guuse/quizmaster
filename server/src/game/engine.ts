@@ -109,6 +109,44 @@ export class GameEngine {
     return this.rooms.has(code.toUpperCase());
   }
 
+  /** Pre-check for a re-arm: does this room exist and is `userId` its creator? */
+  roomOwnership(code: string, userId: string): "ok" | "not_found" | "not_creator" {
+    const room = this.rooms.get(code.toUpperCase());
+    if (!room) return "not_found";
+    if (room.ownerUserId !== userId) return "not_creator";
+    return "ok";
+  }
+
+  /**
+   * Re-arm an existing room with a freshly generated quiz: keep the players (and the creator),
+   * reset scores/answers, and return everyone to the lobby. Powers "host makes a new quiz and
+   * everyone plays again in the same room". Ownership must be validated first (roomOwnership).
+   */
+  rearmRoom(
+    code: string,
+    input: { quizId: string; topic: string; timerSeconds: number; questions: Question[] },
+  ): void {
+    const room = this.rooms.get(code.toUpperCase());
+    if (!room) return;
+    this.clearTimer(room);
+    room.quizId = input.quizId;
+    room.topic = input.topic;
+    room.timerSeconds = input.timerSeconds;
+    room.questions = input.questions;
+    room.phase = "lobby";
+    room.currentQuestionIndex = -1;
+    room.questionStartedAt = 0;
+    room.questionEndsAt = 0;
+    room.finalWritten = false;
+    for (const p of room.players.values()) {
+      p.score = 0;
+      p.answers.clear();
+    }
+    // Flip everyone still connected from the final screen back to the fresh lobby.
+    this.pushSnapshots(room);
+    this.broadcastPlayers(room);
+  }
+
   // ── Socket event handlers ─────────────────────────────────────────────────────
 
   /**

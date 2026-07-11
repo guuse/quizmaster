@@ -10,6 +10,7 @@
 import { Router, type Request, type Response } from "express";
 import {
   ALLOWED_DIFFICULTIES,
+  ALLOWED_LANGUAGES,
   ALLOWED_TIMERS,
   MAX_QUESTIONS,
   MIN_QUESTIONS,
@@ -17,6 +18,7 @@ import {
   type CreateQuizResponse,
   type Difficulty,
   type GameResultSummary,
+  type Language,
 } from "@quizmaster/shared";
 import type { PrismaClient } from "@prisma/client";
 import type { Env } from "../env.js";
@@ -39,11 +41,24 @@ export function createQuizRouter(prisma: PrismaClient, env: Env, engine: GameEng
       res.status(400).json({ error: "invalid_request", message: parsed.error });
       return;
     }
-    const { topic, count, difficulty, timerSeconds } = parsed.value;
+    const { topic, count, difficulty, timerSeconds, language, roomCode } = parsed.value;
+
+    // Re-arm flow: validate the room + creator ownership BEFORE the (rate-limited) Claude call.
+    if (roomCode) {
+      const own = engine.roomOwnership(roomCode, user.id);
+      if (own === "not_found") {
+        res.status(404).json({ error: "not_found", message: "That room no longer exists." });
+        return;
+      }
+      if (own === "not_creator") {
+        res.status(403).json({ error: "forbidden", message: "Only the room's host can start a new quiz here." });
+        return;
+      }
+    }
 
     let questions;
     try {
-      questions = await generateQuiz(env, { topic, count, difficulty });
+      questions = await generateQuiz(env, { topic, count, difficulty, language });
     } catch (err) {
       if (err instanceof QuizGenerationError) {
         // Rate-limit → 429 so the client can show a friendly "busy, try again" and keep the form.
@@ -69,18 +84,24 @@ export function createQuizRouter(prisma: PrismaClient, env: Env, engine: GameEng
       },
     });
 
-    // Spin up a fresh room for this play-through.
-    const room = engine.createRoom({
-      quizId: quiz.id,
-      topic,
-      ownerUserId: user.id,
-      timerSeconds,
-      questions,
-    });
+    // Re-arm the existing room in place, or spin up a fresh one.
+    let outRoomCode: string;
+    if (roomCode) {
+      engine.rearmRoom(roomCode, { quizId: quiz.id, topic, timerSeconds, questions });
+      outRoomCode = roomCode.toUpperCase();
+    } else {
+      outRoomCode = engine.createRoom({
+        quizId: quiz.id,
+        topic,
+        ownerUserId: user.id,
+        timerSeconds,
+        questions,
+      }).code;
+    }
 
     const body: CreateQuizResponse = {
       quizId: quiz.id,
-      roomCode: room.code,
+      roomCode: outRoomCode,
       topic,
       questionCount: questions.length,
     };
@@ -174,5 +195,18 @@ function parseCreateQuizRequest(body: unknown): ParseResult {
     return { error: `timerSeconds must be one of ${ALLOWED_TIMERS.join(", ")}.` };
   }
 
-  return { value: { topic, count, difficulty, timerSeconds } };
+  const language = (b.language as Language) ?? "en";
+  if (!ALLOWED_LANGUAGES.includes(language)) {
+    return { error: `language must be one of ${ALLOWED_LANGUAGES.join(", ")}.` };
+  }
+
+  let roomCode: string | undefined;
+  if (b.roomCode !== undefined && b.roomCode !== null) {
+    if (typeof b.roomCode !== "string" || !/^[A-Za-z0-9]{4,8}$/.test(b.roomCode)) {
+      return { error: "roomCode is invalid." };
+    }
+    roomCode = b.roomCode;
+  }
+
+  return { value: { topic, count, difficulty, timerSeconds, language, roomCode } };
 }

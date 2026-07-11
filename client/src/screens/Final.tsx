@@ -1,13 +1,10 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Home, Repeat, Trophy } from "lucide-react";
+import { Home, Wand2, Trophy } from "lucide-react";
 import type { LeaderboardEntry } from "@quizmaster/shared";
 import { Shell } from "../components/Shell";
 import { Avatar } from "../components/Avatar";
 import { LiveRegion } from "../components/LiveRegion";
 import { useRoom } from "../context/RoomContext";
-import { playAgain, ApiError } from "../lib/api";
-import { loadQuizId, saveQuizId } from "../lib/storage";
 import { cn, fmt } from "../lib/util";
 
 export function Final() {
@@ -16,8 +13,6 @@ export function Final() {
   const entries = snapshot?.leaderboard ?? [];
   const youId = snapshot?.you?.id;
   const isCreator = !!snapshot?.you?.isCreator;
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   const winner = entries.find((e) => e.rank === 1);
 
@@ -26,28 +21,10 @@ export function Final() {
   const second = entries.find((e) => e.rank === 2) ?? null;
   const third = entries.find((e) => e.rank === 3) ?? null;
 
-  async function handlePlayAgain() {
-    const quizId = loadQuizId(roomCode);
-    if (!quizId) {
-      navigate("/");
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await playAgain(quizId);
-      saveQuizId(res.roomCode, res.quizId);
-      leave(); // drop this room's socket + stored identity
-      navigate(`/room/${res.roomCode}`);
-    } catch (e) {
-      // If replay isn't available, fall back to the create screen.
-      if (e instanceof ApiError && (e.status === 404 || e.status === 401)) {
-        navigate("/");
-        return;
-      }
-      setErr("Couldn't start a rematch. Try again.");
-      setBusy(false);
-    }
+  // Host → make a NEW quiz for this SAME room. Do NOT leave(): keep the stored playerToken so
+  // the host reattaches as the creator when they return after generating.
+  function newQuiz() {
+    navigate(`/room/${roomCode}/new`);
   }
 
   function goHome() {
@@ -97,17 +74,20 @@ export function Final() {
         </ul>
       </section>
 
-      {err && <p role="alert" className="mt-3 text-center text-sm text-destructive">{err}</p>}
+      {isCreator ? (
+        <p className="mt-3 text-center text-sm text-sub">Make a new quiz — everyone stays in this room.</p>
+      ) : (
+        <p className="mt-3 text-center text-sm text-sub">The host can start a new quiz to play again.</p>
+      )}
 
       <div className="mt-auto flex gap-2 pt-6">
         {isCreator && (
           <button
             type="button"
-            onClick={handlePlayAgain}
-            disabled={busy}
-            className="flex min-h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl bg-accent px-4 font-display text-lg text-[#241a00] shadow-[0_5px_0_#a9760a] transition-transform active:translate-y-[3px] active:shadow-[0_2px_0_#a9760a] disabled:opacity-60"
+            onClick={newQuiz}
+            className="flex min-h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl bg-accent px-4 font-display text-lg text-[#241a00] shadow-[0_5px_0_#a9760a] transition-transform active:translate-y-[3px] active:shadow-[0_2px_0_#a9760a]"
           >
-            <Repeat size={20} aria-hidden="true" /> {busy ? "…" : "Play again"}
+            <Wand2 size={20} aria-hidden="true" /> New quiz
           </button>
         )}
         <button

@@ -14,6 +14,9 @@
 
 export type QuestionType = "multiple_choice" | "true_false";
 export type Difficulty = "easy" | "medium" | "hard";
+/** Quiz language. en = English, nl = Dutch. */
+export type Language = "en" | "nl";
+export const ALLOWED_LANGUAGES: Language[] = ["en", "nl"];
 
 /** A single question. Answers (correctIndex) live only server-side — never sent to players. */
 export interface Question {
@@ -222,6 +225,13 @@ export interface CreateQuizRequest {
   count: number; // MIN_QUESTIONS..MAX_QUESTIONS
   difficulty: Difficulty;
   timerSeconds: 10 | 20 | 30;
+  language: Language;
+  /**
+   * When set, generate a fresh quiz and RE-ARM this existing room with it (same room code,
+   * players kept, scores reset, back to lobby) instead of opening a new room. Only the room's
+   * creator may do this. Powers "host makes a new quiz, everyone plays again in the same room".
+   */
+  roomCode?: string;
 }
 /** Response contains NO answers — just enough to open a room. */
 export interface CreateQuizResponse {
